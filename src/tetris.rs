@@ -1,24 +1,20 @@
-extern crate panic_halt;
-
-use crate::hal::{delay::Delay, prelude::*};
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::timer::CountDown;
-
-use embedded_graphics::pixelcolor::PixelColorU8;
+use embedded_graphics::pixelcolor::{PixelColorU8};
 use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::Rect;
 use ssd1306::prelude::*;
-
-extern crate wyhash;
+use stm32f1xx_hal::{
+    prelude::*,
+    gpio::Pxx,
+    timer::Timer,
+};
 use wyhash::wyrng;
-
-use stm32f0xx_hal::time::Hertz;
-
 use nb::block;
+use stm32f1xx_hal::gpio::{Input, PullUp};
+use cortex_m::peripheral::SYST;
 
-//use cortex_m_semihosting::hprintln;
-
-const SCREEN_WIDTH: u8 = 128;
+const _SCREEN_WIDTH: u8 = 128;
 const SCREEN_HEIGHT: u8 = 32;
 const GRID_WIDTH: usize = 8;
 const GRID_HEIGHT: usize = 32;
@@ -190,20 +186,19 @@ impl Tetromino {
 pub fn tetris<
     E: core::fmt::Debug,
     GM: ssd1306::interface::DisplayInterface<Error = E>,
-    T: CountDown<Time = Hertz>,
 >(
     disp: &mut GraphicsMode<GM>,
-    delay: &mut Delay,
-    timer: &mut T,
-    p1_t1: &mut impl InputPin<Error = ()>,
-    p1_t2: &mut impl InputPin<Error = ()>,
-    p2_t1: &mut impl InputPin<Error = ()>,
-    p2_t2: &mut impl InputPin<Error = ()>,
-    p2_t3: &mut impl InputPin<Error = ()>,
-    p2_t4: &mut impl InputPin<Error = ()>,
+    timer: Timer<SYST>,
+    p1_t1: &mut Pxx<Input<PullUp>>,
+    p1_t2: &mut Pxx<Input<PullUp>>,
+    p2_t1: &mut Pxx<Input<PullUp>>,
+    p2_t2: &mut Pxx<Input<PullUp>>,
+    p2_t3: &mut Pxx<Input<PullUp>>,
+    p2_t4: &mut Pxx<Input<PullUp>>,
 ) {
     let mut seed = 3;
-    timer.start(Hertz(6));
+
+    let mut countdown_timer = timer.start_count_down(6.hz());
     'game: loop {
         let mut grid: Grid = [[0; GRID_WIDTH]; GRID_HEIGHT];
 
@@ -275,7 +270,7 @@ pub fn tetris<
                 }
 
                 current_tetromino.y += 1;
-                block!(timer.wait());
+                block!(countdown_timer.wait()).unwrap();
             }
         }
     }

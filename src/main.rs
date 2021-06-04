@@ -1,22 +1,24 @@
 #![no_main]
 #![no_std]
+#![allow(unused_labels)]
 
-extern crate panic_halt;
 use cortex_m_rt::entry;
-
-use crate::hal::{delay::Delay, prelude::*, stm32};
-use embedded_hal::digital::v2::InputPin;
-use hal::gpio::gpiob::{PB6, PB7};
-use hal::gpio::{Alternate, AF1};
-use hal::i2c::I2c;
-use hal::stm32f0::stm32f0x2::I2C1;
-use hal::stm32f0::stm32f0x2::TIM1;
-use hal::time::Hertz;
-use hal::timers::Timer;
-use stm32f0xx_hal as hal;
-
+use stm32f1xx_hal::delay::{Delay, };
+use core::panic::PanicInfo;
+use rtt_target::{rprintln, rtt_init_print};
+use stm32f1xx_hal::{
+    i2c::{DutyCycle, Mode},
+    prelude::*,
+    pac::{I2C1},
+    timer::{Timer},
+};
 use ssd1306::prelude::*;
-use ssd1306::Builder;
+use ssd1306::{Builder};
+use stm32f1xx_hal::gpio::gpiob::{PB6, PB7};
+use stm32f1xx_hal::gpio::{Alternate, OpenDrain, PullUp, Input, Pxx};
+use stm32f1xx_hal::i2c::BlockingI2c;
+use cortex_m::peripheral::SYST;
+
 
 const BOOT_DELAY_MS: u32 = 100;
 
@@ -24,10 +26,10 @@ mod tetris;
 
 #[entry]
 fn main() -> ! {
+    rtt_init_print!();
     let (
-        mut delay,
         i2c,
-        mut timer,
+        timer,
         mut p1_t1,
         mut p1_t2,
         mut p2_t1,
@@ -36,6 +38,7 @@ fn main() -> ! {
         mut p2_t4,
     ) = config_hardware();
 
+
     let mut disp: GraphicsMode<_> = Builder::new()
         .with_size(DisplaySize::Display128x32)
         .connect_i2c(i2c)
@@ -43,8 +46,9 @@ fn main() -> ! {
     disp.init().unwrap();
     disp.flush().unwrap();
 
+
     tetris::tetris(
-        &mut disp, &mut delay, &mut timer, &mut p1_t1, &mut p1_t2, &mut p2_t1, &mut p2_t2,
+        &mut disp, timer, &mut p1_t1, &mut p1_t2, &mut p2_t1, &mut p2_t2,
         &mut p2_t3, &mut p2_t4,
     );
 
@@ -52,53 +56,84 @@ fn main() -> ! {
 }
 
 fn config_hardware() -> (
-    Delay,
-    I2c<I2C1, PB6<Alternate<AF1>>, PB7<Alternate<AF1>>>,
-    Timer<TIM1>,
-    impl InputPin<Error = ()>,
-    impl InputPin<Error = ()>,
-    impl InputPin<Error = ()>,
-    impl InputPin<Error = ()>,
-    impl InputPin<Error = ()>,
-    impl InputPin<Error = ()>,
+    BlockingI2c<I2C1, (PB6<Alternate<OpenDrain>>, PB7<Alternate<OpenDrain>>)>,
+    Timer<SYST>,
+    Pxx<Input<PullUp>>,
+    Pxx<Input<PullUp>>,
+    Pxx<Input<PullUp>>,
+    Pxx<Input<PullUp>>,
+    Pxx<Input<PullUp>>,
+    Pxx<Input<PullUp>>,
 ) {
-    let mut p = stm32::Peripherals::take().unwrap();
-    let cp = cortex_m::peripheral::Peripherals::take().unwrap();
+    let core = cortex_m::Peripherals::take().unwrap();
+    let device = stm32f1xx_hal::stm32::Peripherals::take().unwrap();
 
-    cortex_m::interrupt::free(move |cs| {
-        let mut rcc = p.RCC.configure().sysclk(8.mhz()).freeze(&mut p.FLASH);
-        let mut delay = Delay::new(cp.SYST, &rcc);
+    cortex_m::interrupt::free(move |_cs| {
+        let mut rcc = device.RCC.constrain();
+        let mut flash = device.FLASH.constrain();
 
+        let clocks = rcc
+            .cfgr
+            .use_hse(8.mhz())
+            .hclk(24.mhz())
+            .sysclk(24.mhz())
+            .pclk1(12.mhz())
+            .pclk2(12.mhz())
+            .freeze(&mut flash.acr);
+
+        let mut delay = Delay::new(core.SYST, clocks);
         delay.delay_ms(BOOT_DELAY_MS);
+        let syst = delay.free();
 
-        let gpiob = p.GPIOB.split(&mut rcc);
-        let scl = gpiob.pb6.into_alternate_af1(cs); //D5
-        let sda = gpiob.pb7.into_alternate_af1(cs); //D4
+        let mut gpiob = device.GPIOB.split(&mut rcc.apb2);
+        let scl = gpiob.pb6.into_alternate_open_drain(&mut gpiob.crl);
+        let sda = gpiob.pb7.into_alternate_open_drain(&mut gpiob.crl);
 
-        let gpioa = p.GPIOA.split(&mut rcc);
+        let mut gpioa = device.GPIOA.split(&mut rcc.apb2);
 
-        let t1 = gpioa.pa0.into_pull_up_input(cs);
-        //let t2 = gpioa.pa1.into_pull_up_input(cs);
-        let t3 = gpioa.pa2.into_pull_up_input(cs);
-        let t4 = gpioa.pa5.into_pull_up_input(cs);
+        let t1 = gpioa.pa0.into_pull_up_input(&mut gpioa.crl);
+        //let t2 = gpioa.pa1.into_pull_up_input(&mut gpioa.crl);
+        let t3 = gpioa.pa1.into_pull_up_input(&mut gpioa.crl);
+        let t4 = gpioa.pa2.into_pull_up_input(&mut gpioa.crl);
 
-        let t5 = gpioa.pa8.into_pull_up_input(cs);
-        //let t6 = gpioa.pa9.into_pull_up_input(cs);
-        let t7 = gpioa.pa15.into_pull_up_input(cs);
-        let t8 = gpiob.pb3.into_pull_up_input(cs);
+        let t5 = gpioa.pa8.into_pull_up_input(&mut gpioa.crh);
+        //let t6 = gpioa.pa?.into_pull_up_input(&mut gpioa.crh);
+        let t7 = gpioa.pa9.into_pull_up_input(&mut gpioa.crh);
+        let t8 = gpiob.pb5.into_pull_up_input(&mut gpiob.crl);
 
-        let p1_t1 = t3; // PA2
-        let p1_t2 = t5; // PA8
+        let p1_t1 = t3.downgrade();
+        let p1_t2 = t5.downgrade();
 
-        let p2_t1 = t4; // PA5
-        let p2_t2 = t8; // PB3
-        let p2_t3 = t1;
-        let p2_t4 = t7;
+        let p2_t1 = t4.downgrade();
+        let p2_t2 = t8.downgrade();
+        let p2_t3 = t1.downgrade();
+        let p2_t4 = t7.downgrade();
 
-        let i2c = I2c::i2c1(p.I2C1, (scl, sda), 400.khz(), &mut rcc);
+        let mut afio = device.AFIO.constrain(&mut rcc.apb2);
+        let i2c = BlockingI2c::i2c1(
+        device.I2C1,
+        (scl, sda),
+        &mut afio.mapr,
+        Mode::Fast {
+            frequency: 400_000.hz(),
+            duty_cycle: DutyCycle::Ratio2to1,
+        },
+        clocks,
+        &mut rcc.apb1,
+        1000,
+        10,
+        1000,
+        1000,
+    );
 
-        let timer = Timer::tim1(p.TIM1, Hertz(1), &mut rcc);
+        let timer = Timer::syst(syst, &clocks);
 
-        (delay, i2c, timer, p1_t1, p1_t2, p2_t1, p2_t2, p2_t3, p2_t4)
+        (i2c, timer, p1_t1, p1_t2, p2_t1, p2_t2, p2_t3, p2_t4)
     })
+}
+
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    rprintln!("{}", info);
+    loop {}
 }

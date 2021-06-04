@@ -1,28 +1,28 @@
 [package]
-authors = ["Marek Miettinen <marek.miettinen@gmail.com>"]
+authors = ["Marek Miettinen <marek.miettinen@gmail.com>", "Jason Spencer <jason@typi.ca>"]
 edition = "2018"
 readme = "README.md"
 name = "micropong"
-version = "0.1.0"
+version = "0.2.0"
 
 [dependencies]
-cortex-m = "0.6.0"
-cortex-m-rt = "0.6.8"
-cortex-m-semihosting = "0.3.3"
-panic-halt = "0.2.0"
-nb = "0.1.2"
-
-
-stm32f0xx-hal = {version = "0.14.1", features=["stm32f042"]}
-
-
-embedded-hal = {version = "0.2.3", features = ["unproven"]}
+cortex-m = "0.7.2"
+cortex-m-rt = "0.6.13"
+nb = "1.0.0"
+stm32f1xx-hal = { version = "0.7.0", features = ["rt", "stm32f103" ] }
+rtt-target = { version = "0.3.1", features = ["cortex-m"] }
+embedded-hal = { version = "0.2.5" }
+display-interface = "0.4.0"
 
 ssd1306 = {version ="0.2.6", features=["graphics"]}
 embedded-graphics = "0.4.5"
-arrayvec = {version ="0.4.11", default-features=false}
-libm = "0.1.4"
-wyhash = "0.3.0"
+arrayvec = {version ="0.7.0", default-features=false}
+libm = "0.2.1"
+wyhash = "0.5.0"
+
+[dependencies.stm32f1]
+version = "0.13.0"
+features = ["stm32f103", "rt"]
 
 # this lets you use `cargo fix`!
 [[bin]]
