@@ -4,6 +4,8 @@ This is a direct port of [Marek Miettinen's](https://github.com/marikka)
 
 It's a fun showcase of the [SSD1306 OLED display](https://crates.io/crates/ssd1306).
 
+I wrote a bit about porting this [here](https://proto.typi.ca/rust-porting-chips/).
+
 The original is in [this branch](https://github.com/marikka/micropong/tree/tetris). I didn't (yet?) port the pong game [here](https://github.com/marikka/micropong).
 
 ### Flashing
